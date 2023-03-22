@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug)]
 pub struct Prods {
@@ -8,23 +8,17 @@ pub struct Prods {
     pub rules: Vec<(char, Vec<char>)>,
 }
 
-#[derive(Clone, Debug)]
-struct Derivation {
-    pub idxs: Vec<usize>,
-    str_pos: usize,
+#[derive(PartialEq, Eq)]
+enum State {
+    Normal,
+    Reverse,
+    Ended,
 }
 
-#[derive(Clone, Debug)]
-struct State {
-    sym_pos: usize,
-    from_rule: usize,
-    drv: Derivation,
-}
-
-enum Result {
-    Match(Derivation),
-    NotMatched,
-    NoRules,
+#[derive(PartialEq, Eq)]
+enum Record {
+    Carry,
+    Rule(usize),
 }
 
 impl Prods {
@@ -37,103 +31,91 @@ impl Prods {
         }
     }
 
-    // TODO: check that from and to is from terms or nonterms
     pub fn add_rule(&mut self, from: char, to: &[char]) {
         self.rules.push((from, to.to_vec()))
     }
-
-    fn handle_non_term(&self, rhs: &Vec<char>, s: &str, rule: usize) -> Result {
-        let mut prev_states = vec![];
-
-        let mut state = State {
-            sym_pos: 0,
-            from_rule: 0,
-            drv: Derivation { idxs: vec![rule], str_pos: 0 }
-        };
-
-        while state.sym_pos < rhs.len() {
-            if self.nonterms.contains(&rhs[state.sym_pos]) {
-                prev_states.push(state.clone());
-            }
-
-            match self._analyze(rhs[state.sym_pos], &s[state.drv.str_pos..], state.from_rule) {
-                Result::Match(mut drv) => {
-                    state.drv.idxs.append(&mut drv.idxs);
-                    state.drv.str_pos += drv.str_pos;
-                    state.sym_pos += 1;
-                    state.from_rule = 0;
-                },
-                Result::NotMatched => {
-                    // TODO: move to outer fn "restore_prev_state"
-                    state = if let Some(prev_state) = prev_states.pop() { 
-                        prev_state 
-                    } else {
-                        return Result::NotMatched;
-                    };
-                    state.from_rule += 1;
-                },
-                Result::NoRules => {
-                    if prev_states.pop().is_none() { 
-                        return Result::NotMatched;
-                    };
-
-                    state = if let Some(prev_state) = prev_states.pop() { 
-                        prev_state 
-                    } else {
-                        return Result::NotMatched;
-                    };
-                    state.from_rule += 1;
-                }
-            };
-        }
-
-        return Result::Match(state.drv);
-    }
-
-    fn _analyze(&self, cur: char, s: &str, from_rule: usize) -> Result {
-        if self.nonterms.contains(&cur) {
-            for (i, (_, rhs)) in self
-                .rules
-                .iter()
-                .enumerate()
-                .skip(from_rule)
-                .filter(|rule| rule.1 .0 == cur)
-            {
-                println!("{i}. {cur} -> {rhs:?}");
-                match self.handle_non_term(rhs, s, i) {
-                    Result::Match(drv) => {
-                        return Result::Match(drv);
-                    },
-                    _ => (),
-                }
-            }
-        }
-
-        if self.terms.contains(&cur) {
-            let ch = match s.chars().next() {
-                Some(ch) => ch,
-                None => return Result::NotMatched,
-            };
-
-            if ch == cur {
-                return Result::Match(Derivation {
-                    idxs: vec![],
-                    str_pos: 1,
-                });
-            }
-
-            return Result::NotMatched;
-        }
-
-        Result::NoRules
-    }
-
-    // FIXME: возмоно зацикливание для леворекурсивной грамматики
+    
+    /// Восходящий анализ.
+    /// Грамматика должны быть без циклов и неукорачивающейся. 
     pub fn analyze(&self, s: &str) -> Option<Vec<usize>> {
-        let cur = self.init;
-        match self._analyze(cur, s, 0) {
-            Result::Match(drv) => Some(drv.idxs),
-            _ => None,
+        let mut deriv: Vec<char> = Vec::new();
+        let mut hist: VecDeque<Record> = VecDeque::new();
+        let mut idx = 0;
+        let mut state = State::Normal;
+        
+        while state != State::Ended {
+            // (1) – try convolute while possible
+            while let Some(rule) = self.get_conv(&deriv) {
+                let (left, right) = &self.rules[rule];
+                for _ in 0..right.len() {
+                    deriv.pop();
+                }
+                deriv.push(*left);
+                hist.push_front(Record::Rule(rule));
+            }
+
+            if idx < s.len() {
+                // (2) – carry
+                let sym = s.chars().nth(idx).unwrap(); 
+                deriv.push(sym);
+                idx += 1;
+
+                hist.push_front(Record::Carry);
+                continue; // go to (1)
+            }
+
+            if deriv.len() == 1 && deriv[0] == self.init {
+                // check for (3) condition
+                state = State::Ended;
+                continue;
+            }
+
+            // (4) – reverse state
+            state = State::Reverse;
+
+            // (5) – TODO:
         }
+
+        // (3) – normal finish
+        unimplemented!()
+    }
+}
+
+// Helper functions
+impl Prods {
+    fn get_conv(&self, deriv: &[char]) -> Option<usize> {
+        unimplemented!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init() -> Prods {
+        let terms = ['!', '+', '*', '(', ')', 'a', 'b'];
+        let nonterms = ['A', 'B', 'T', 'M'];
+        let init = 'A';
+
+        let mut prods = Prods::new(&terms, &nonterms, init);
+        prods.add_rule('A', &['a']);
+        prods.add_rule('A', &['!', 'B', '!']);
+        prods.add_rule('B', &['T']);
+        prods.add_rule('B', &['T', '+', 'B']);
+        prods.add_rule('T', &['M']);
+        prods.add_rule('T', &['M', '*', 'T']);
+        prods.add_rule('M', &['a']);
+        prods.add_rule('M', &['b']);
+        prods.add_rule('M', &['(', 'B', ')']);
+
+        prods
+    }
+
+    #[test]
+    fn test1() {
+        let prods = init();
+        let input = "!a*b!";
+        let derivation = prods.analyze(input);
+        println!("{:?}", derivation);
     }
 }

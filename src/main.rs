@@ -20,7 +20,7 @@ fn main() {
         println!("{}) {} -> {}", i, rule.0, String::from_iter(rule.1.iter()));
     }
 
-    let input = "!a+b!";
+    let input = "!a*b!";
     let derivation = prods.analyze(input);
     println!("{:?}", derivation);
 }
