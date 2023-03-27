@@ -42,108 +42,19 @@ impl Prods {
         let mut idx = 0;
         let mut state = State::Normal;
 
-        while state != State::Ended {
-            // (1) – try convolute while possible
-            while let Some(rule) = self.get_conv(&deriv, 0) {
-                let (left, right) = &self.rules[rule];
-                for _ in 0..right.len() {
-                    deriv.pop();
+        loop {
+            match state {
+                State::Normal => {
+                    state = self.handle_normal(&mut deriv, &mut hist, s, &mut idx);
                 }
-                deriv.push(*left);
-                hist.push_front(Record::Rule(rule));
-                // println!("(1) Got rule {rule} ({left}->{right:?}); Deriv: {deriv:?}, hist head: {:?}", hist[0]);
-            }
-
-            if idx < s.len() {
-                // (2) – carry
-                let sym = s.chars().nth(idx).expect("There is symbols");
-                deriv.push(sym);
-                idx += 1;
-
-                hist.push_front(Record::Carry);
-                // println!("(2) Symbol: {sym}, Deriv: {deriv:?}, idx={idx}; hist head: {:?}", hist[0]);
-                continue; // go to (1)
-            }
-
-            if deriv.len() == 1 && deriv[0] == self.init {
-                // check for (3) condition
-                state = State::Ended;
-                continue;
-            }
-
-            // (4) – reverse state
-            state = State::Reverse;
-
-            // (5) -- State::Reverse
-            while state == State::Reverse {
-                // (5а) – pop number and rule and find rule with a higher number matching stack
-                let non_term = deriv.pop().expect("There is non terminal in derviation");
-                let rule = match hist.pop_front().expect("There is records in history") {
-                    Record::Rule(rule) => rule,
-                    Record::Carry => {
-                        // (5g) – reverse by terminal
-                        // println!("(5g)");
-                        if idx == 0 {
-                            // Doesn't belong to grammar
-                            return None;
-                        }
-                        idx -= 1;
-                        continue; // to reverse
-                    }
-                };
-                let (left, right) = &self.rules[rule];
-                for &c in right {
-                    deriv.push(c);
+                State::Reverse => {
+                    state = self.handle_reverse(&mut deriv, &mut hist, s, &mut idx);
                 }
-
-                #[cfg(debug_assertions)]
-                assert_eq!(non_term, *left); // TODO: for debug purpose
-
-                match self.get_conv(&deriv, rule + 1) {
-                    Some(rule) => {
-                        let (left, right) = &self.rules[rule];
-                        for _ in 0..right.len() {
-                            deriv.pop();
-                        }
-                        deriv.push(*left);
-                        hist.push_front(Record::Rule(rule));
-                        state = State::Normal;
-                        // println!("(5a)");
-                        continue;
-                    }
-                    None => {
-                        // (5b) – everything read and can't find another rule
-                        if idx >= s.len() {
-                            // already done everything needed
-                            // NOTE: staying in reverse state
-                            // println!("(5b)");
-                            continue;
-                        }
-
-                        // (5c) – reverse with carry
-                        let sym = s.chars().nth(idx).expect("There is symbols");
-                        deriv.push(sym);
-                        idx += 1;
-
-                        hist.push_front(Record::Carry);
-                        state = State::Normal;
-                        // println!("(5c)");
-                        continue;
-                    }
+                State::Ended => {
+                    return self.handle_ended(&mut deriv, &mut hist);
                 }
             }
         }
-
-        // (3) – normal finish
-        // println!("(3)");
-        let mut result = Vec::new();
-        for record in hist {
-            match record {
-                Record::Rule(rule) => result.push(rule),
-                Record::Carry => (),
-            }
-        }
-        Some(result)
     }
 }
 
@@ -151,12 +62,129 @@ impl Prods {
 impl Prods {
     fn get_conv(&self, deriv: &[char], from: usize) -> Option<usize> {
         for (i, (_, right)) in self.rules.iter().enumerate().skip(from) {
-            if deriv.ends_with(&right) {
+            if deriv.ends_with(right) {
                 return Some(i);
             }
         }
 
         None
+    }
+
+    fn handle_normal(
+        &self,
+        deriv: &mut Vec<char>,
+        hist: &mut VecDeque<Record>,
+        s: &str,
+        idx: &mut usize,
+    ) -> State {
+        // (1) – try convolute while possible
+        while let Some(rule) = self.get_conv(deriv, 0) {
+            let (left, right) = &self.rules[rule];
+            for _ in 0..right.len() {
+                deriv.pop();
+            }
+            deriv.push(*left);
+            hist.push_front(Record::Rule(rule));
+            // println!("(1) Got rule {rule} ({left}->{right:?}); Deriv: {deriv:?}, hist head: {:?}", hist[0]);
+        }
+
+        // (2) – carry
+        if *idx < s.len() {
+            let sym = s.chars().nth(*idx).expect("There is symbols");
+            deriv.push(sym);
+            *idx += 1;
+
+            hist.push_front(Record::Carry);
+            // println!("(2) Symbol: {sym}, Deriv: {deriv:?}, idx={idx}; hist head: {:?}", hist[0]);
+            return State::Normal;
+        }
+
+        // (3) – end
+        if deriv.len() == 1 && deriv[0] == self.init {
+            return State::Ended;
+        }
+
+        State::Reverse
+    }
+
+    fn handle_reverse(
+        &self,
+        deriv: &mut Vec<char>,
+        hist: &mut VecDeque<Record>,
+        s: &str,
+        idx: &mut usize,
+    ) -> State {
+        // (5а) – pop number and rule and find rule with a higher number matching stack
+        let _ = deriv.pop().expect("There is non terminal in derviation");
+        let rule = match hist.pop_front().expect("There is records in history") {
+            Record::Rule(rule) => rule,
+            Record::Carry => {
+                // (5g) – reverse by terminal
+                // println!("(5g)");
+                if *idx == 0 {
+                    // Doesn't belong to grammar
+                    return State::Ended;
+                }
+                *idx -= 1;
+                return State::Reverse;
+            }
+        };
+
+        let (_, right) = &self.rules[rule];
+        for &c in right {
+            deriv.push(c);
+        }
+
+        match self.get_conv(deriv, rule + 1) {
+            Some(rule) => {
+                let (left, right) = &self.rules[rule];
+                for _ in 0..right.len() {
+                    deriv.pop();
+                }
+                deriv.push(*left);
+                hist.push_front(Record::Rule(rule));
+                // println!("(5a)");
+                State::Normal
+            }
+            None => {
+                // (5b) – everything read and can't find another rule
+                if *idx >= s.len() {
+                    // already done everything needed
+                    // NOTE: staying in reverse state
+                    // println!("(5b)");
+                    return State::Reverse;
+                }
+
+                // (5c) – reverse with carry
+                let sym = s.chars().nth(*idx).expect("There is symbols");
+                deriv.push(sym);
+                *idx += 1;
+
+                hist.push_front(Record::Carry);
+                // println!("(5c)");
+                State::Normal
+            }
+        }
+    }
+
+    fn handle_ended(
+        &self,
+        deriv: &mut Vec<char>,
+        hist: &mut VecDeque<Record>,
+    ) -> Option<Vec<usize>> {
+        // println!("(3)");
+        if deriv.len() != 1 || deriv[0] != self.init {
+            return None;
+        }
+
+        let mut result = Vec::new();
+        for record in hist {
+            match record {
+                Record::Rule(rule) => result.push(*rule),
+                Record::Carry => (),
+            }
+        }
+        Some(result)
     }
 }
 

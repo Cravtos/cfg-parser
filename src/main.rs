@@ -8,8 +8,8 @@ fn main() {
     let mut prods = Prods::new(&terms, &nonterms, init);
     prods.add_rule('B', &['B', '+', 'T']);
     prods.add_rule('B', &['T']);
-    prods.add_rule('T', &['M']);
     prods.add_rule('T', &['T', '*', 'M']);
+    prods.add_rule('T', &['M']);
     prods.add_rule('M', &['a']);
     prods.add_rule('M', &['b']);
 
