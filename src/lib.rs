@@ -85,17 +85,18 @@ impl Prods {
             }
             deriv.push(*left);
             hist.push_front(Record::Rule(rule));
-            // println!("(1) Got rule {rule} ({left}->{right:?}); Deriv: {deriv:?}, hist head: {:?}", hist[0]);
         }
 
         // (2) – carry
         if *idx < s.len() {
-            let sym = s.chars().nth(*idx).expect("There is symbols");
+            let sym = match s.chars().nth(*idx) {
+                Some(sym) => sym,
+                None => return State::Ended,
+            };
             deriv.push(sym);
             *idx += 1;
 
             hist.push_front(Record::Carry);
-            // println!("(2) Symbol: {sym}, Deriv: {deriv:?}, idx={idx}; hist head: {:?}", hist[0]);
             return State::Normal;
         }
 
@@ -115,12 +116,18 @@ impl Prods {
         idx: &mut usize,
     ) -> State {
         // (5а) – pop number and rule and find rule with a higher number matching stack
-        let _ = deriv.pop().expect("There is non terminal in derviation");
-        let rule = match hist.pop_front().expect("There is records in history") {
+        match deriv.pop() {
+            Some(_) => (),
+            None => return State::Ended,
+        };
+        let record = match hist.pop_front() {
+            Some(record) => record,
+            None => return State::Ended,
+        };
+        let rule = match record {
             Record::Rule(rule) => rule,
             Record::Carry => {
                 // (5g) – reverse by terminal
-                // println!("(5g)");
                 if *idx == 0 {
                     // Doesn't belong to grammar
                     return State::Ended;
@@ -143,25 +150,24 @@ impl Prods {
                 }
                 deriv.push(*left);
                 hist.push_front(Record::Rule(rule));
-                // println!("(5a)");
                 State::Normal
             }
             None => {
                 // (5b) – everything read and can't find another rule
                 if *idx >= s.len() {
                     // already done everything needed
-                    // NOTE: staying in reverse state
-                    // println!("(5b)");
                     return State::Reverse;
                 }
 
                 // (5c) – reverse with carry
-                let sym = s.chars().nth(*idx).expect("There is symbols");
+                let sym = match s.chars().nth(*idx) {
+                    Some(sym) => sym,
+                    None => return State::Ended,
+                };
                 deriv.push(sym);
                 *idx += 1;
 
                 hist.push_front(Record::Carry);
-                // println!("(5c)");
                 State::Normal
             }
         }
@@ -172,13 +178,12 @@ impl Prods {
         deriv: &mut Vec<char>,
         hist: &mut VecDeque<Record>,
     ) -> Option<Vec<usize>> {
-        // println!("(3)");
         if deriv.len() != 1 || deriv[0] != self.init {
             return None;
         }
 
         let mut result = Vec::new();
-        for record in hist {
+        for record in hist.iter().rev() {
             match record {
                 Record::Rule(rule) => result.push(*rule),
                 Record::Carry => (),
@@ -198,7 +203,6 @@ mod tests {
         let init = 'A';
 
         let mut prods = Prods::new(&terms, &nonterms, init);
-        prods.add_rule('A', &['a']);
         prods.add_rule('A', &['!', 'B', '!']);
         prods.add_rule('B', &['T']);
         prods.add_rule('B', &['T', '+', 'B']);
@@ -208,22 +212,23 @@ mod tests {
         prods.add_rule('M', &['b']);
         prods.add_rule('M', &['(', 'B', ')']);
 
+        // for (i, rule) in prods.rules.iter().enumerate() {
+        //     println!(
+        //         "{}) {} -> {}",
+        //         i + 1,
+        //         rule.0,
+        //         String::from_iter(rule.1.iter())
+        //     );
+        // }
+
         prods
     }
 
     #[test]
     fn test1() {
         let prods = init();
-        let input = "!a*b!";
+        let input = "!a+b!";
         let derivation = prods.analyze(input);
-        for (i, rule) in prods.rules.iter().enumerate() {
-            println!(
-                "{}) {} -> {}",
-                i + 1,
-                rule.0,
-                String::from_iter(rule.1.iter())
-            );
-        }
 
         match derivation {
             Some(derivation) => {
@@ -231,11 +236,167 @@ mod tests {
                     .iter()
                     .map(|rule| (rule + 1).to_string())
                     .collect();
-                println!("Derivation: {derivation}");
+                assert_eq!(derivation, "6474231");
             }
             None => {
-                println!("Doesn't belong to grammatic");
+                panic!("should belong to grammatic");
             }
+        }
+    }
+
+    #[test]
+    fn test2() {
+        let prods = init();
+        let input = "!a*b!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "674521");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
+        }
+    }
+
+    #[test]
+    fn test3() {
+        let prods = init();
+        let input = "!(a+b)*(b+a)!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "647423874642384521");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
+        }
+    }
+
+    #[test]
+    fn test4() {
+        let prods = init();
+        let input = "!b*a+a*b!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "76456745231");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
+        }
+    }
+
+    #[test]
+    fn test5() {
+        let prods = init();
+        let input = "!(a+b)*a+b*a!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "64742386457645231");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
+        }
+    }
+
+    #[test]
+    fn test6() {
+        let prods = init();
+        let input = "!(a+b*a)*(b*b+a*(a+b+a))!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "647645238774566474642338452384521");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
+        }
+    }
+
+    #[test]
+    fn test7() {
+        let prods = init();
+        let input = "!a+*b!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(_) => {
+                panic!("shouldn't belong to grammatic");
+            }
+            None => (),
+        }
+    }
+
+    #[test]
+    fn test8() {
+        let prods = init();
+        let input = "a+b*a+b";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(_) => {
+                panic!("shouldn't belong to grammatic");
+            }
+            None => (),
+        }
+    }
+
+    #[test]
+    fn test9() {
+        let prods = init();
+        let input = "a!b";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(_) => {
+                panic!("shouldn't belong to grammatic");
+            }
+            None => (),
+        }
+    }
+
+    #[test]
+    fn test10() {
+        let prods = init();
+        let input = "!a(b+a()!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(_) => {
+                panic!("shouldn't belong to grammatic");
+            }
+            None => (),
         }
     }
 }

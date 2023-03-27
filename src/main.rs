@@ -4,6 +4,7 @@ fn main() {
     let terms = ['a', 'b', '*', '+'];
     let nonterms = ['B', 'T', 'M'];
     let init = 'B';
+    let input = "a*b";
 
     let mut prods = Prods::new(&terms, &nonterms, init);
     prods.add_rule('B', &['B', '+', 'T']);
@@ -22,7 +23,6 @@ fn main() {
         );
     }
 
-    let input = "a*b";
     let derivation = prods.analyze(input);
     match derivation {
         Some(derivation) => {
