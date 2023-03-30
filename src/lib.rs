@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 pub struct Prods {
     terms: HashSet<char>,
@@ -38,7 +38,7 @@ impl Prods {
     /// Грамматика должны быть без циклов и неукорачивающейся.
     pub fn analyze(&self, s: &str) -> Option<Vec<usize>> {
         let mut deriv: Vec<char> = Vec::new();
-        let mut hist: VecDeque<Record> = VecDeque::new();
+        let mut hist: Vec<Record> = Vec::new();
         let mut idx = 0;
         let mut state = State::Normal;
 
@@ -73,7 +73,7 @@ impl Prods {
     fn handle_normal(
         &self,
         deriv: &mut Vec<char>,
-        hist: &mut VecDeque<Record>,
+        hist: &mut Vec<Record>,
         s: &str,
         idx: &mut usize,
     ) -> State {
@@ -84,7 +84,7 @@ impl Prods {
                 deriv.pop();
             }
             deriv.push(*left);
-            hist.push_front(Record::Rule(rule));
+            hist.push(Record::Rule(rule));
         }
 
         // (2) – carry
@@ -96,7 +96,7 @@ impl Prods {
             deriv.push(sym);
             *idx += 1;
 
-            hist.push_front(Record::Carry);
+            hist.push(Record::Carry);
             return State::Normal;
         }
 
@@ -111,7 +111,7 @@ impl Prods {
     fn handle_reverse(
         &self,
         deriv: &mut Vec<char>,
-        hist: &mut VecDeque<Record>,
+        hist: &mut Vec<Record>,
         s: &str,
         idx: &mut usize,
     ) -> State {
@@ -120,7 +120,7 @@ impl Prods {
             Some(_) => (),
             None => return State::Ended,
         };
-        let record = match hist.pop_front() {
+        let record = match hist.pop() {
             Some(record) => record,
             None => return State::Ended,
         };
@@ -149,7 +149,7 @@ impl Prods {
                     deriv.pop();
                 }
                 deriv.push(*left);
-                hist.push_front(Record::Rule(rule));
+                hist.push(Record::Rule(rule));
                 State::Normal
             }
             None => {
@@ -167,23 +167,19 @@ impl Prods {
                 deriv.push(sym);
                 *idx += 1;
 
-                hist.push_front(Record::Carry);
+                hist.push(Record::Carry);
                 State::Normal
             }
         }
     }
 
-    fn handle_ended(
-        &self,
-        deriv: &mut Vec<char>,
-        hist: &mut VecDeque<Record>,
-    ) -> Option<Vec<usize>> {
+    fn handle_ended(&self, deriv: &mut Vec<char>, hist: &mut Vec<Record>) -> Option<Vec<usize>> {
         if deriv.len() != 1 || deriv[0] != self.init {
             return None;
         }
 
         let mut result = Vec::new();
-        for record in hist.iter().rev() {
+        for record in hist.iter() {
             match record {
                 Record::Rule(rule) => result.push(*rule),
                 Record::Carry => (),
