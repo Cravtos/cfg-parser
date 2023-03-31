@@ -44,15 +44,9 @@ impl Prods {
 
         loop {
             match state {
-                State::Normal => {
-                    state = self.handle_normal(&mut deriv, &mut hist, s, &mut idx);
-                }
-                State::Reverse => {
-                    state = self.handle_reverse(&mut deriv, &mut hist, s, &mut idx);
-                }
-                State::Ended => {
-                    return self.handle_ended(&mut deriv, &mut hist);
-                }
+                State::Normal => state = self.handle_normal(&mut deriv, &mut hist, s, &mut idx),
+                State::Reverse => state = self.handle_reverse(&mut deriv, &mut hist, s, &mut idx),
+                State::Ended => return self.handle_ended(&mut deriv, &mut hist),
             }
         }
     }
@@ -208,14 +202,14 @@ mod tests {
         prods.add_rule('M', &['b']);
         prods.add_rule('M', &['(', 'B', ')']);
 
-        // for (i, rule) in prods.rules.iter().enumerate() {
-        //     println!(
-        //         "{}) {} -> {}",
-        //         i + 1,
-        //         rule.0,
-        //         String::from_iter(rule.1.iter())
-        //     );
-        // }
+        for (i, rule) in prods.rules.iter().enumerate() {
+            println!(
+                "{}) {} -> {}",
+                i + 1,
+                rule.0,
+                String::from_iter(rule.1.iter())
+            );
+        }
 
         prods
     }
@@ -393,6 +387,26 @@ mod tests {
                 panic!("shouldn't belong to grammatic");
             }
             None => (),
+        }
+    }
+
+    #[test]
+    fn test11() {
+        let prods = init();
+        let input = "!a*(b+a)*b!";
+        let derivation = prods.analyze(input);
+
+        match derivation {
+            Some(derivation) => {
+                let derivation: String = derivation
+                    .iter()
+                    .map(|rule| (rule + 1).to_string())
+                    .collect();
+                assert_eq!(derivation, "67464238745521");
+            }
+            None => {
+                panic!("should belong to grammatic");
+            }
         }
     }
 }
